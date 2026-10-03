@@ -104,13 +104,11 @@ barch-shop/
     index.html            the storefront
     register.html         create an account
     signon.html           sign in
-    spaces.html           the key space viewer
     shop.css              the looks, shared by all of them
   luau/                 the stored functions -> shop, as keys
     conf.luau             CONF, the http key: port, user, which routes
     shopui.luau           SHOPUI, the pages
     shopapi.luau          SHOPAPI, /api/*
-    spacesapi.luau        SPACESAPI, /api/admin/* - what the viewer reads
     shopimg.luau          SHOPIMG, /img/*
     imgsource.luau        the fs_source behind /img
     imglist.luau          the fs_source_list behind FS LS /img
@@ -479,42 +477,21 @@ metro as they load, since a road is many segments and the picker wants a name:
 
 ## Looking at the key spaces
 
-`/shop/spaces.html`, behind the account button. Every space the server knows
-about down the side with its key count, and four tabs: the keys in one with their
-values, the file store as a tree where a space has one, the configuration both
-per space and global, and the statistics.
+The shop used to carry its own key space viewer. It's a repository of its own now,
+[barch-spaces](https://github.com/tjizep/barch-spaces), that works beside any app.
+To see what the shop keeps, give barchd both:
 
-**It reads every space the HTTP user can see.** It is read-only and it is behind
-a sign-in, but a sign-in on an example storefront is not an admin boundary. Do
-not put this on a public port.
+```
+barchd --port 14000 --dir data \
+  -g https://github.com/tjizep/barch-shop user=default \
+  -g https://github.com/tjizep/barch-spaces user=default
+# the shop: http://127.0.0.1:18090/shop    the viewer: http://127.0.0.1:18091/spaces
+```
 
-Three things had to be worked out rather than assumed, and each one shaped the
-code:
-
-**`KEYS` is asynchronous, so a script may not call it.** Keys come off the
-`barch.space[name]` handle's range walk instead. Nor does the `space:COMMAND`
-prefix help: it works on a RESP connection but not through `barch.call`, because
-the runner looks the whole name up in the command table and there is no command
-called `GEO:DBSIZE`. So anything per-space goes through a handle and only global
-commands - `SPACES`, `CONFIG`, `INFO`, `STATS`, `OPS` - go through `barch.call`.
-
-**The file tree is the key walk, done carefully.** A file is `fs:n:<path>` holding
-`{id,size,type,version}` and a directory is `fs:n:<path>/` holding `{dir:true}`,
-so one level is a range. The first version walked everything under the prefix and
-discarded anything with a slash left in it, which works until a directory is big:
-`/catalog` is 7,344 files, the walk ran out inside it, and `/meta` and `/modules`
-were simply missing from the listing of `/`. It steps over subtrees now - past a
-directory to the first byte that cannot be inside it, which is `/` plus one.
-
-**`CONFIG` is one command for GET and SET.** It carries `read`, `write` and
-`config` together, so there is no way to let a route read the settings without
-also letting one change them. `setup.sh` grants `+config` and says so; drop it and
-the viewer reports the missing grant instead of showing an empty list as though
-the server had no settings.
-
-One limit it is honest about rather than hiding: `INFO SHARD` reads the
-connection's key space and the route runs in `shop`, so the shard figures describe
-`shop` whichever space is selected. The page says which space they are about.
+It shows every space with its keys and values, the file store, the functions and
+the settings, and lets an admin change them and run commands. It has its own
+accounts, separate from the shop's, and the first one made becomes its admin. Its
+README says what it grants the `web` user the shop's routes also run as.
 
 ## Things it ran into
 
@@ -553,46 +530,3 @@ because `require` caches.
 **Prices are server side.** The basket posts asins and quantities, never prices;
 `/api/order` looks each one up and totals it. A basket that arrives with its own
 totals is a basket that can arrive with any totals it likes.
-
-## Changing things from the key space viewer
-
-`/shop/spaces.html` can write as well as read, for admins only. An admin is an
-account whose email has an entry `admin:<email>` (any value) in the `users` space;
-nothing in the code sets one, because anyone can register:
-
-```
-redis-cli -p 14100 -3
-USE users
-SET admin:you@example.com 1
-```
-
-An admin sees a **New key** button, an editor (with a file picker) in each key's
-popup, an **Upload files here** button on the Files tab and **Rename** / **Delete**
-on file rows; everyone else keeps the read-only view. The server enforces it: the
-`POST /api/admin/key_put|key_rm|file_put|file_mv|file_rm` routes answer 403 to a
-non-admin, whatever the page draws. the `configuration` space can be edited like any other (the page asks for
-extra care there), and keys under `fs:` are refused because they are the file store's own records.
-
-File writes go through `barch.fs.space(name)`, the `barch.fs` functions bound to
-the named space, so they work in every space that has a file store (`shop`,
-`images`). That needs a barchd built after 18-09-2026; on an older one
-`barch.fs.space` is nil and the file operations answer 404.
-
-## The RESP console
-
-Admins get a **Console** tab in the key space viewer. It opens a modal that runs one
-command at a time in the space that is open: a dropdown of commands (grouped by
-family, with the dangerous ones marked), the command's syntax, summary and an
-example between it and the argument box, the reply in redis-cli's style underneath,
-and the last dozen commands to run again.
-
-The server side is `POST /api/admin/resp?space=NAME` with `{"args": ["GET", "k"]}`,
-and it runs the command with `sp:call(...)` - `barch.call` bound to that space
-(needs a barchd built on or after 19-09-2026). It runs as the route user, so the
-`web` user's ACL still decides what is allowed, and barch refuses the asynchronous
-commands (`KEYS`, `RANGE`, `VALUES`) inside a script; they are left out of the list.
-Commands the reference marks dangerous ask first, and so does any write in the
-`configuration` space.
-
-The list is `app/commands.json`, written out of the command reference in
-`docs/index.html` by `make_commands.py`. Run it again when that reference changes.

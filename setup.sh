@@ -114,13 +114,8 @@ fi
 
 # The routes call a stored function (SEARCHCAT) and write an order, so the user the
 # handlers run as needs `function` and `data` on top of what the built-in `web` has.
-# Naming a user `web` here replaces that default for this server.
-#
-# `config` is here for the space viewer's global settings page and it is the one
-# grant worth thinking about before copying: CONFIG is a single command carrying
-# `read`, `write` and `config` together, so there is no way to let a route read
-# the settings without also letting one change them. Drop `+config` if you do not
-# want that - the viewer then says the grant is missing rather than breaking.
+# Naming a user `web` here replaces that default for this server. The key space
+# viewer, github.com/tjizep/barch-spaces, grants what it needs itself.
 echo "loading the images source"
 $CLI -3 <<EOF >/dev/null
 USE images
@@ -128,7 +123,7 @@ LOADKEYS $HERE/images/luau RELOAD
 EOF
 
 echo "granting the web user what the routes need"
-$CLI ACL SETUSER web on +read +write +data +keys +function +config >/dev/null
+$CLI ACL SETUSER web on +read +write +data +keys +function >/dev/null
 
 echo "loading the functions"
 $CLI -3 <<EOF >/dev/null
