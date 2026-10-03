@@ -1,0 +1,6 @@
+# what prepare.py writes and barchd keeps, both made locally
+build/
+data/
+__pycache__/
+*.log
+barchd.pid
