@@ -1,22 +1,90 @@
 # A shop, out of a key space
 
-A storefront over 7,344 Amazon products: a grid with categories and search, a product
-page, a basket, and a checkout that writes an order. The catalog is a file tree in
-barch whose directories are the category tree; the product images are not shipped at
-all, and arrive from Amazon the first time somebody looks at one.
+A working web shop over 7,344 Amazon products: categories, search, product pages, a
+basket and a checkout. All of it runs inside [barch](https://github.com/tjizep/barch),
+with no other database, web server or app server.
 
-It runs on [barch](https://github.com/tjizep/barch). The quickest way in is to let
-barchd install it straight from this repository:
+## See it running
+
+### What you need first
+
+Three programs: `barchd` (barch itself), `python3` and `redis-cli`. Check you have
+them by pasting this into a terminal:
 
 ```
-mkdir -p data
-barchd --port 14000 --dir data -g https://github.com/tjizep/barch-shop user=default
-# open http://127.0.0.1:18090/shop
+barchd --version; python3 --version; redis-cli --version
 ```
 
-That brings up the pages, the accounts and the HTTP server; the catalog itself is a
-Python step against the running server (see "Or straight from git" below). From a
-clone, `setup.sh` does all of it:
+Each should print a version. If `barchd` says "command not found", build or install
+it first, following [barch's README](https://github.com/tjizep/barch). If
+`redis-cli` is missing, on Ubuntu or Debian it comes with
+`sudo apt install redis-tools`.
+
+### Start the shop
+
+Open **two terminal windows**. Everything goes in a folder called
+`~/barch-shop-demo`, so it doesn't matter which folder each terminal starts in.
+
+**In terminal 1**, paste this and leave it running. It starts barch, which downloads
+the shop from GitHub and installs it:
+
+```
+mkdir -p ~/barch-shop-demo/data && cd ~/barch-shop-demo && barchd --port 14000 --dir data -g https://github.com/tjizep/barch-shop user=default
+```
+
+**In terminal 2**, paste this. It waits until terminal 1 is ready, then loads the
+7,344 products. It takes from a few seconds to a minute, depending on how quickly
+terminal 1 downloads the shop, and ends with `loaded 7344 products into inventory`:
+
+```
+until redis-cli -p 14000 ping >/dev/null 2>&1; do sleep 1; done; cd ~/barch-shop-demo/data/functions/barch-shop && python3 prepare.py && python3 load_inventory.py 14000
+```
+
+**Then open http://127.0.0.1:18090/shop in your browser.**
+
+Pictures show up as you scroll. Each one is fetched from Amazon the first time anyone
+looks at it, so this needs internet access.
+
+### Stopping it, and next time
+
+- **To stop the shop**, press `Ctrl+C` in terminal 1. Terminal 2 has already
+  finished and can be closed.
+- **To start it again later**, you only need terminal 1's command. The products are
+  saved, so terminal 2 isn't needed a second time.
+- **To start over from nothing**, stop the shop, then run
+  `rm -rf ~/barch-shop-demo` and do both steps again.
+
+If the page opens but shows no products, terminal 2's command didn't finish. Run it
+again and read what it prints.
+
+### Extras
+
+- **The key space viewer**, a page that shows everything stored in barch. Stop the
+  shop, then start it in terminal 1 with this instead:
+
+  ```
+  cd ~/barch-shop-demo && barchd --port 14000 --dir data -g https://github.com/tjizep/barch-shop user=default -g https://github.com/tjizep/barch-spaces user=default
+  ```
+
+  and open http://127.0.0.1:18091/spaces.
+- **Address lookup at checkout.** With the shop running, paste this into terminal 2.
+  It downloads map data and takes about six minutes; without it the checkout just
+  says there's no address data:
+
+  ```
+  cd ~/barch-shop-demo/data/functions/barch-shop && pip install overturemaps h3 redis shapely && python3 geo.py --port 14000
+  ```
+
+## How it's put together
+
+The catalog is a file tree in barch whose directories are the category tree. The
+product images aren't shipped at all: they arrive from Amazon the first time somebody
+looks at one. The rest of this README goes through each part, and "Things it ran into"
+at the end lists what went wrong on the way.
+
+## Running it from a clone, with setup.sh
+
+From a clone of this repository, `setup.sh` does all of it:
 
 ```
 mkdir -p data
